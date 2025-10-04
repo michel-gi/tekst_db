@@ -54,18 +54,18 @@ jobs:
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest] #, macos-latest]
-        script:
-          - name: dobbelsteen_simulatie
-            type: gui
-          - name: vergelijk_verdelingen
-            type: gui
-          - name: plot_eindpunt_kansen
-            type: gui
+        include:
           - name: tekstdb_gui
             type: gui
+            os: windows-latest
+          - name: tekstdb_gui
+            type: gui
+            os: ubuntu-latest
           - name: tekstdb_bewerk
             type: console
-          - name: tekstdb_tester
+          - name: maak_test_db
+            type: console
+          - name: rapport
             type: console
 
     runs-on: ${{ matrix.os }}
@@ -85,7 +85,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Generate Version File for Windows
-      if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+      if: matrix.os == 'windows-latest' && startsWith(github.ref, 'refs/tags/v')
       run: |
         # Get version from tag, remove 'v' prefix.
         # This script generates a version.txt file in a format suitable for PyInstaller's
@@ -109,6 +109,14 @@ jobs:
         V4=${V_PARTS[3]:-0}
         VERSION_TUPLE="($V1, $V2, $V3, $V4)"
         VERSION_STRING="$V1.$V2.$V3.$V4"
+        
+        # Set description based on script type
+        DESCRIPTION="TekstDB Tool"
+        if [[ "${{ matrix.name }}" == "tekstdb_gui" ]]; then
+          DESCRIPTION="Grafische editor voor TekstDB"
+        elif [[ "${{ matrix.name }}" == "tekstdb_bewerk" ]]; then
+          DESCRIPTION="CLI-editor voor TekstDB"
+        fi
 
         echo "Generating version.txt with version $VERSION_STRING"
 
@@ -127,7 +135,7 @@ jobs:
         printf "    date=(0, 0)\n" >> version.txt
         printf "  ),\n" >> version.txt
         printf "  kids=[\n" >> version.txt
-        printf "    StringFileInfo([StringTable(u'040904B0', [StringStruct(u'CompanyName', u'Dobbelen Project'), StringStruct(u'FileDescription', u'Dobbelsteen Simulatie'), StringStruct(u'FileVersion', u'%s'), StringStruct(u'InternalName', u'dobbelsteen_simulatie'), StringStruct(u'LegalCopyright', u'Copyright © Michel'), StringStruct(u'OriginalFilename', u'dobbelsteen_simulatie.exe'), StringStruct(u'ProductName', u'Dobbelsteen Simulatie'), StringStruct(u'ProductVersion', u'%s')])]),\n" "$VERSION_STRING" "$VERSION_STRING" >> version.txt
+        printf "    StringFileInfo([StringTable(u'040904B0', [StringStruct(u'CompanyName', u'TekstDB Project'), StringStruct(u'FileDescription', u'%s'), StringStruct(u'FileVersion', u'%s'), StringStruct(u'InternalName', u'%s'), StringStruct(u'LegalCopyright', u'Copyright © Michel'), StringStruct(u'OriginalFilename', u'%s.exe'), StringStruct(u'ProductName', u'TekstDB Project'), StringStruct(u'ProductVersion', u'%s')])]),\n" "$DESCRIPTION" "$VERSION_STRING" "${{ matrix.name }}" "${{ matrix.name }}" "$VERSION_STRING" >> version.txt
         printf "    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])\n" >> version.txt
         printf "  ]\n" >> version.txt
         printf ")\n" >> version.txt
@@ -142,37 +150,31 @@ jobs:
         PYINSTALLER_ARGS="--onefile"
 
         # Bepaal of het een console of windowed app is en voeg specifieke opties toe
-        if [[ "${{ matrix.script.type }}" == "gui" ]]; then
+        if [[ "${{ matrix.type }}" == "gui" ]]; then
           # Voor GUI-apps (Tkinter, Matplotlib): verberg het consolevenster op Windows
-          # en help PyInstaller met het vinden van de Tkinter-backend voor Matplotlib.
-          PYINSTALLER_ARGS="$PYINSTALLER_ARGS --windowed --hidden-import PIL._tkinter_finder"
+          PYINSTALLER_ARGS="$PYINSTALLER_ARGS --windowed"
         else
           # Voor console-apps: zorg dat er een consolevenster is.
           PYINSTALLER_ARGS="$PYINSTALLER_ARGS --console"
         fi
 
         # Voeg het icoon en versie-info alleen toe aan de hoofd-applicatie
-        if [[ "${{ matrix.script.name }}" == "dobbelsteen_simulatie" ]]; then
-          if [[ "${{ runner.os }}" == "Windows" && -f "assets/dice.ico" ]]; then
-            PYINSTALLER_ARGS="$PYINSTALLER_ARGS --icon=assets/dice.ico"
-            # Add version file only if it exists (i.e., on a tagged build)
-            if [[ -f "version.txt" ]]; then
-                PYINSTALLER_ARGS="$PYINSTALLER_ARGS --version-file version.txt"
-            fi
-          # elif [[ "${{ runner.os }}" == "macOS" && -f "assets/dice.icns" ]]; then
-          #   PYINSTALLER_ARGS="$PYINSTALLER_ARGS --icon=assets/dice.icns"
-          fi # macOS build is disabled for now
+        if [[ "${{ matrix.name }}" == "tekstdb_gui" ]]; then
+          # Add version file only if it exists (i.e., on a tagged build on Windows)
+          if [[ "${{ matrix.os }}" == "windows-latest" && -f "version.txt" ]]; then
+              PYINSTALLER_ARGS="$PYINSTALLER_ARGS --version-file version.txt"
+          fi
         fi
 
         # Voer PyInstaller uit met de samengestelde argumenten
-        pyinstaller $PYINSTALLER_ARGS ${{ matrix.script.name }}.py
+        pyinstaller $PYINSTALLER_ARGS ${{ matrix.name }}.py
       shell: bash
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.script.name }}-${{ runner.os }}
-        path: dist/${{ matrix.script.name }}${{ runner.os == 'Windows' && '.exe' || '' }}
+        name: ${{ matrix.name }}-${{ matrix.os }}
+        path: dist/${{ matrix.name }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
 
   release:
     # De 'release' job draait alleen als de 'build' job succesvol is voor alle OS'en
@@ -226,8 +228,8 @@ jobs:
 
         # Create the final release directory and the archives
         mkdir release-assets
-        (cd staging/windows && zip -r "../../release-assets/dobbelen-${{ github.ref_name }}-windows.zip" .)
-        (cd staging/linux && tar -czvf "../../release-assets/dobbelen-${{ github.ref_name }}-linux.tar.gz" .)
+        (cd staging/windows && zip -r "../../release-assets/tekst_db-${{ github.ref_name }}-windows.zip" .)
+        (cd staging/linux && tar -czvf "../../release-assets/tekst_db-${{ github.ref_name }}-linux.tar.gz" .)
       shell: bash
 
     - name: Create Release and Upload Artifacts

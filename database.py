@@ -92,6 +92,10 @@ class TextDatabase:
             logging.error("Fout bij schrijven naar '%s': %s", self.bestandsnaam, e)
             return False
 
+    def __len__(self):
+        """Geeft het aantal items in de database terug."""
+        return len(self.data)
+
     def get_tekst(self, index_nummer):
         """Haalt een tekst op basis van indexnummer uit het geheugen."""
         return self.data.get(index_nummer)
