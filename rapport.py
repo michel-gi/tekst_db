@@ -54,7 +54,13 @@ def maak_rapport(bestandsnaam, index_to_get):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Genereert een rapport uit een tekst-database.")
     parser.add_argument("bestandsnaam", help="Het databasebestand om te lezen.")
-    parser.add_argument("-i", "--index", type=int, default=1, help="De index van het item om op te halen (standaard: 1).")
+    parser.add_argument(
+        "-i",
+        "--index",
+        type=int,
+        default=1,
+        help="De index van het item om op te halen (standaard: 1).",
+    )
     args = parser.parse_args()
 
     maak_rapport(args.bestandsnaam, args.index)
