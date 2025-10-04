@@ -210,16 +210,16 @@ jobs:
           if [[ -z "$file_path" ]]; then continue; fi
 
           case "$dir" in
-            *-Windows)
-              script_name=${dir%-Windows}; ext=".exe"
+            *-windows-latest)
+              script_name=${dir%-windows-latest}; ext=".exe"
               mv "$file_path" "../staging/windows/${script_name}${ext}"
               ;;
-            *-Linux)
-              script_name=${dir%-Linux}; ext=""
+            *-ubuntu-latest)
+              script_name=${dir%-ubuntu-latest}; ext=""
               mv "$file_path" "../staging/linux/${script_name}${ext}"
               ;;
             *)
-              echo "Warning: Unrecognized artifact directory format: $dir"
+              echo "Warning: Unrecognized artifact directory format '$dir'"
               continue
               ;;
           esac
