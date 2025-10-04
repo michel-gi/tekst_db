@@ -20,6 +20,104 @@ def toon_menu():
     print("[m]enu   - dit menu opnieuw weergeven")
 
 
+def _vraag_index(prompt_tekst, max_index):
+    """Vraagt de gebruiker om een index en valideert deze."""
+    try:
+        index = int(input(prompt_tekst))
+        if 1 <= index <= max_index:
+            return index
+        print(f"Fout: Index moet tussen 1 en {max_index} liggen.")
+        return None
+    except ValueError:
+        print("Ongeldige invoer. Voer een getal in.")
+        return None
+
+
+def _vraag_multiline_tekst(prompt):
+    """Vraagt de gebruiker om meerdere regels tekst."""
+    print(prompt)
+    regels = []
+    while True:
+        try:
+            regel = input()
+            if not regel.strip():
+                break
+            regels.append(regel)
+        except EOFError:  # Ctrl+D
+            break
+    return "\n".join(regels)
+
+
+def _vraag_bevestiging(prompt):
+    """Vraagt om een 'j/n' bevestiging en geeft een boolean terug."""
+    while True:
+        antwoord = input(prompt).lower()
+        if antwoord.startswith("j"):
+            return True
+        if antwoord.startswith("n"):
+            return False
+        print("Ongeldige invoer. Voer 'j' of 'n' in.")
+
+
+def _handel_nieuw(db):
+    """Handelt het toevoegen van een nieuw item af."""
+    nieuwe_tekst = _vraag_multiline_tekst("Voer de nieuwe tekst in. Sluit af met een lege regel.")
+    if nieuwe_tekst and db.voeg_tekst_toe(nieuwe_tekst):
+        print("Tekst succesvol toegevoegd (nog niet opgeslagen).")
+        print(f"Totaal aantal items in de database nu: {len(db)}")
+    elif nieuwe_tekst:
+        print("Fout: Kon de nieuwe tekst niet toevoegen.")
+
+
+def _handel_wijzig(db):
+    """Handelt het wijzigen van een bestaand item af."""
+    index = _vraag_index(f"Index om te wijzigen (1-{len(db)}): ", len(db))
+    if index is None:
+        return
+
+    huidige_tekst = db.get_tekst(index)
+    print(f"\n--- Huidige tekst voor index {index} ---\n{huidige_tekst}\n--- Einde huidige tekst ---")
+    nieuwe_tekst = _vraag_multiline_tekst("\nVoer de nieuwe tekst in. Sluit af met een lege regel.")
+
+    if nieuwe_tekst and db.wijzig_tekst(index, nieuwe_tekst):
+        print(f"Tekst voor index {index} succesvol gewijzigd (nog niet opgeslagen).")
+    elif nieuwe_tekst:
+        print(f"Fout: Kon tekst voor index {index} niet wijzigen.")
+
+
+def _handel_verwijder(db):
+    """Handelt het verwijderen van een item af."""
+    index = _vraag_index(f"Index om te verwijderen (1-{len(db)}): ", len(db))
+    if index is None:
+        return
+
+    print(f"\n--- Tekst voor index {index} ---\n{db.get_tekst(index)}\n--- Einde tekst ---")
+    if _vraag_bevestiging(f"Weet u zeker dat u item {index} wilt verwijderen? (j/n): "):
+        if db.verwijder_tekst(index):
+            print(f"Item {index} succesvol verwijderd (nog niet opgeslagen).")
+            print(f"Totaal aantal items in de database nu: {len(db)}")
+        else:
+            print(f"Fout: Kon item {index} niet verwijderen.")
+    else:
+        print(f"Verwijdering van item {index} geannuleerd.")
+
+
+def _handel_plaats(db):
+    """Handelt het verplaatsen van een item af."""
+    source_index = _vraag_index(f"Item om te verplaatsen (1-{len(db)}): ", len(db))
+    if source_index is None:
+        return
+
+    dest_index = _vraag_index(f"Nieuwe positie voor item {source_index} (1-{len(db)}): ", len(db))
+    if dest_index is None:
+        return
+
+    if db.move_item(source_index, dest_index):
+        print(f"Item {source_index} succesvol verplaatst naar positie {dest_index} (nog niet opgeslagen).")
+    else:
+        print("Fout: Kon het item niet verplaatsen.")
+
+
 def main():
     """Hoofdfunctie voor de gebruikersinteractie."""
     parser = argparse.ArgumentParser(
@@ -49,13 +147,10 @@ def main():
     if create_new:
         if os.path.exists(bestandsnaam):
             print(f"Waarschuwing: Bestand '{bestandsnaam}' bestaat al.")
-            while True:
-                bevestiging = input("Weet u zeker dat u dit wilt overschrijven met een lege database? (j/n): ").lower()
-                if bevestiging.startswith("j"):
-                    break  # Ga door met overschrijven
-                elif bevestiging.startswith("n"):
-                    print("Operatie geannuleerd.")
-                    sys.exit(0)
+            prompt = "Weet u zeker dat u dit wilt overschrijven met een lege database? (j/n): "
+            if not _vraag_bevestiging(prompt):
+                print("Operatie geannuleerd.")
+                sys.exit(0)
 
     # Maak één database object aan. Alle operaties gaan via dit object.
     db = TextDatabase(bestandsnaam, create_new=create_new)
@@ -63,7 +158,7 @@ def main():
 
     while True:
         try:
-            aantal_items = len(db.data)
+            aantal_items = len(db)
             if aantal_items > 0:
                 prompt_tekst = f"\nKies een optie of een nummer (1-{aantal_items}): "
             else:
@@ -88,96 +183,27 @@ def main():
                 match invoer_lower:
                     case "stop" | "s":
                         if db.dirty:
-                            while True:
-                                bevestiging = input(
-                                    "Er zijn niet-opgeslagen wijzigingen. Opslaan voor het stoppen? (j/n): "
-                                ).lower()
-                                if bevestiging.startswith("j"):
-                                    if not db.save():
-                                        print("Fout: Kon de database niet opslaan.")
-                                        continue  # Blijf in de while-lus, vraag opnieuw
+                            prompt = "Er zijn niet-opgeslagen wijzigingen. Opslaan voor het stoppen? (j/n): "
+                            if _vraag_bevestiging(prompt):
+                                if db.save():
                                     print("Wijzigingen opgeslagen.")
-                                    break
-                                elif bevestiging.startswith("n"):
-                                    break
+                                else:
+                                    print("Fout: Kon de database niet opslaan.")
+                                    continue  # Blijf in de lus
                         break
 
                     case "menu" | "m":
                         toon_menu()
 
                     case "nieuw" | "n":
-                        print("Voer de nieuwe tekst in. Laat een lege regel achter om op te slaan.")
-                        nieuwe_tekst_regels = []
-                        while True:
-                            regel = input()
-                            if not regel.strip():
-                                break
-                            nieuwe_tekst_regels.append(regel)
-
-                        nieuwe_tekst = "\n".join(nieuwe_tekst_regels)
-                        if db.voeg_tekst_toe(nieuwe_tekst):
-                            print("Tekst succesvol toegevoegd (nog niet opgeslagen).")
-                            print(f"Totaal aantal items in de database nu: {len(db.data)}")
-                        else:
-                            print("Fout: Kon de nieuwe tekst niet opslaan.")
+                        _handel_nieuw(db)
 
                     case "wijzig" | "w":
-                        try:
-                            index_nummer = int(input("Voer het indexnummer in van de tekst die u wilt wijzigen: "))
-                            if index_nummer not in db.data:
-                                print(f"Fout: Geen tekst gevonden voor index {index_nummer}.")
-                            else:
-                                huidige_tekst = db.get_tekst(index_nummer)
-                                print(f"\n--- Huidige tekst voor index {index_nummer} ---")
-                                print(huidige_tekst)
-                                print("--- Einde huidige tekst ---\n")
-                                print("\nVoer nu de nieuwe tekst in. Laat een lege regel achter om op te slaan.")
-                                nieuwe_tekst_regels = []
-                                while True:
-                                    regel = input()
-                                    if not regel.strip():
-                                        break
-                                    nieuwe_tekst_regels.append(regel)
-                                nieuwe_tekst = "\n".join(nieuwe_tekst_regels)
-                                if db.wijzig_tekst(index_nummer, nieuwe_tekst):
-                                    bericht = (
-                                        f"Tekst voor index {index_nummer} succesvol gewijzigd (nog niet opgeslagen)."
-                                    )
-                                    print(bericht)
-                                else:
-                                    print(f"Fout: Kon tekst voor index {index_nummer} niet wijzigen.")
-                        except ValueError:
-                            print("Ongeldige invoer voor indexnummer. Voer een getal in.")
+                        _handel_wijzig(db)
 
                     case "verwijder" | "v":
-                        try:
-                            index_nummer = int(input("Voer het indexnummer in van de tekst die u wilt verwijderen: "))
-                            if index_nummer not in db.data:
-                                print(f"Fout: Geen tekst gevonden voor index {index_nummer}.")
-                            else:
-                                verwijder_bericht = (
-                                    f"\n--- Tekst voor index {index_nummer} die verwijderd wordt ---\n"
-                                    f"{db.get_tekst(index_nummer)}\n--- Einde tekst ---\n"
-                                )
-                                print(verwijder_bericht)
-                                while True:
-                                    bevestiging = input(
-                                        f"Weet u zeker dat u item {index_nummer} wilt verwijderen? (j/n): "
-                                    )
-                                    if bevestiging.lower().startswith("j"):
-                                        if db.verwijder_tekst(index_nummer):
-                                            print(f"Item {index_nummer} succesvol verwijderd (nog niet opgeslagen).")
-                                            print(f"Totaal aantal items in de database nu: {len(db.data)}")
-                                        else:
-                                            print(f"Fout: Kon item {index_nummer} niet verwijderen.")
-                                        break
-                                    elif bevestiging.lower().startswith("n"):
-                                        print(f"Verwijdering van item {index_nummer} geannuleerd.")
-                                        break
-                                    else:
-                                        print("Ongeldige invoer. Voer 'j' of 'n' in.")
-                        except ValueError:
-                            print("Ongeldige invoer voor indexnummer. Voer een getal in.")
+                        _handel_verwijder(db)
+
                     case "opslaan" | "o":
                         if db.save():
                             print("Database succesvol opgeslagen.")
@@ -185,24 +211,8 @@ def main():
                             print("Fout: Kon de database niet opslaan.")
 
                     case "plaats" | "p":
-                        try:
-                            source_index = int(input("Voer het indexnummer in van het item om te verplaatsen: "))
-                            if source_index not in db.data:
-                                print(f"Fout: Bronindex {source_index} niet gevonden.")
-                            else:
-                                dest_index = int(
-                                    input(f"Voer de nieuwe positie in voor item {source_index} (1-{len(db.data)}): ")
-                                )
-                                if db.move_item(source_index, dest_index):
-                                    bericht = (
-                                        f"Item {source_index} succesvol verplaatst naar "
-                                        f"positie {dest_index} (nog niet opgeslagen)."
-                                    )
-                                    print(bericht)
-                                else:
-                                    print("Fout: Kon het item niet verplaatsen. Controleer of de doelindex geldig is.")
-                        except ValueError:
-                            print("Ongeldige invoer voor indexnummer. Voer een getal in.")
+                        _handel_plaats(db)
+
                     case _:  # Handle other invalid input (including non-integer which falls through from Try)
                         print(f"Ongeldige invoer. '{gebruikers_invoer}' is geen geldig nummer of commando.")  # type: ignore[possibly-unbound]
 
