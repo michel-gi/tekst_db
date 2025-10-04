@@ -15,6 +15,7 @@ This project consists of several standalone applications:
 * **`tekstdb_bewerk`**: A command-line tool for managing the text-based database (`database.py`).
 * **`tekstdb_tester`**: A utility to test the integrity and functionality of the text database.
 * **`rapport.py`**: An example script demonstrating how to use the `TextDatabase` class to read data and generate a simple report.
+* **`maak_test_db`**: A helper script to generate a test database file with sample data.
 
 ## Core Component: `database.py` - The Text Database
 
@@ -107,6 +108,6 @@ This project uses GitHub Actions for Continuous Integration and Continuous Deplo
 
 1. Jobs are initiated for Windows, macOS, and Linux environments.
 2. All Python dependencies from `requirements.txt` are installed.
-3. PyInstaller builds executables for all five scripts on each operating system.
+3. PyInstaller builds executables for all four main scripts on each operating system.
 4. The built executables are uploaded as artifacts to a new GitHub Release.
 5. The release is automatically tagged with the current timestamp, making all cross-platform executables available as downloadable assets.
