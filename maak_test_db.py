@@ -53,7 +53,12 @@ def maak_test_database(bestandsnaam, data):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Genereert een test-databasebestand.")
-    parser.add_argument("bestandsnaam", nargs="?", default="mijn_tekstdatabase.txt", help="De naam van het te creëren databasebestand (standaard: mijn_tekstdatabase.txt).")
+    parser.add_argument(
+        "bestandsnaam",
+        nargs="?",
+        default="mijn_tekstdatabase.txt",
+        help="De naam van het te creëren databasebestand (standaard: mijn_tekstdatabase.txt).",
+    )
     args = parser.parse_args()
 
     maak_test_database(args.bestandsnaam, VOORBEELD_DATA)
