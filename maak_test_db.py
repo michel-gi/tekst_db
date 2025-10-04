@@ -57,9 +57,7 @@ if __name__ == "__main__":
         "bestandsnaam",
         nargs="?",
         default="mijn_tekstdatabase.txt",
-        help=(
-            "De naam van het te creëren databasebestand (standaard: mijn_tekstdatabase.txt)."
-        ),
+        help=("De naam van het te creëren databasebestand (standaard: mijn_tekstdatabase.txt)."),
     )
     args = parser.parse_args()
 
