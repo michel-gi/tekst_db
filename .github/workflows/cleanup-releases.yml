@@ -1,0 +1,43 @@
+# .github/workflows/cleanup-releases.yml
+name: Delete old releases
+on:
+  schedule:
+    # Runs at 01:00 every day to avoid conflicts with other scheduled jobs.
+    - cron: '0 1 * * *'
+  workflow_dispatch: # Allows you to run this workflow manually
+
+jobs:
+  delete-old-releases:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to delete releases and their tags.
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Delete releases older than the 3 most recent
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          releases_to_keep=3
+
+          # List all release tags, skip the ones to keep, and store the rest.
+          # We explicitly pass the repository to `gh` for clarity and robustness.
+          # It sorts releases newest-first by default.
+          tags_to_delete=$(gh release list --repo "$GH_REPO" --limit 100 --json tagName --jq '.[].tagName' | tail -n +$((releases_to_keep + 1)))
+
+          if [[ -z "$tags_to_delete" ]]; then
+            echo "No old releases to delete."
+            exit 0
+          fi
+
+          echo "Found $(echo "$tags_to_delete" | wc -l | xargs) old release(s) to delete:"
+          echo "$tags_to_delete"
+
+          echo "$tags_to_delete" | while IFS= read -r tag; do
+            echo "Deleting release and tag: $tag"
+            gh release delete "$tag" --repo "$GH_REPO" --cleanup-tag --yes
+          done

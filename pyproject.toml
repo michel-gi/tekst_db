@@ -1,0 +1,15 @@
+[tool.ruff]
+line-length = 119
+target-version = "py312"
+
+[tool.ruff.lint]
+# E (pycodestyle errors), F (Pyflakes), I (isort), UP (pyupgrade), T20 (print)
+select = ["E", "F", "I", "UP", "T20"]
+
+# Ignore the 'print found' rule (T201). For a CLI application like this,
+# using print() for user output is intended and appropriate.
+ignore = ["T201"]
+
+[tool.ruff.lint.per-file-ignores]
+# PyInstaller's version.py uses undefined names that ruff would flag as F821.
+"version.py" = ["F821"]

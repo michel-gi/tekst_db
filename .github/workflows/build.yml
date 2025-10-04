@@ -1,0 +1,247 @@
+name: Build Cross-Platform Executables
+
+on:
+  push:
+    # Alleen uitvoeren wanneer een tag wordt gepusht die start met 'v' (bv. v1.0, v1.2.3).
+    tags:
+      - 'v*'
+  workflow_dispatch: # Maakt het mogelijk om de build handmatig te starten
+
+jobs:
+  lint:
+    name: Run linter (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Ruff linter
+        # The --check flag on the format command will fail the job if files need reformatting.
+        run: ruff check . && ruff format --check .
+
+  test:
+    name: Run database tests
+    needs: lint # Zorg ervoor dat de linter eerst slaagt
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run tekstdb_tester.py
+      # This step will fail if the script exits with a non-zero code.
+      run: python tekstdb_tester.py
+
+  build:
+    needs: test # Zorg ervoor dat de tests eerst slagen
+    # Gebruik een matrix om de job op meerdere besturingssystemen te draaien
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest] #, macos-latest]
+        script:
+          - name: dobbelsteen_simulatie
+            type: gui
+          - name: vergelijk_verdelingen
+            type: gui
+          - name: plot_eindpunt_kansen
+            type: gui
+          - name: tekstdb_gui
+            type: gui
+          - name: tekstdb_bewerk
+            type: console
+          - name: tekstdb_tester
+            type: console
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12' # Gebruik dezelfde Python-versie als lokaal.
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Generate Version File for Windows
+      if: runner.os == 'Windows' && startsWith(github.ref, 'refs/tags/v')
+      run: |
+        # Get version from tag, remove 'v' prefix.
+        # This script generates a version.txt file in a format suitable for PyInstaller's
+        # --version-file option. It extracts the version from the Git tag, pads it to
+        # four components if necessary, and then embeds it into a standard Windows
+        # version information structure.
+        #
+        # The version.txt file defines metadata for the executable, such as file version,
+        # product version, company name, and copyright information, which can be viewed
+        # in the file properties on Windows.
+        #
+        # Note: This step uses 'bash' shell for its advanced string manipulation capabilities.
+
+        VERSION_STR="${{ github.ref_name }}"
+        VERSION=${VERSION_STR#v}
+        # PyInstaller version file needs 4 components. Pad with .0 if needed.
+        IFS='.' read -r -a V_PARTS <<< "$VERSION"
+        V1=${V_PARTS[0]:-0}
+        V2=${V_PARTS[1]:-0}
+        V3=${V_PARTS[2]:-0}
+        V4=${V_PARTS[3]:-0}
+        VERSION_TUPLE="($V1, $V2, $V3, $V4)"
+        VERSION_STRING="$V1.$V2.$V3.$V4"
+
+        echo "Generating version.txt with version $VERSION_STRING"
+
+        # Create the version file content. This is a Python-like structure that PyInstaller
+        # parses to embed version information into the Windows executable.
+        printf "# UTF-8\n" > version.txt
+        printf "VSVersionInfo(\n" >> version.txt
+        printf "  ffi=FixedFileInfo(\n" >> version.txt
+        printf "    filevers=%s,\n" "$VERSION_TUPLE" >> version.txt
+        printf "    prodvers=%s,\n" "$VERSION_TUPLE" >> version.txt
+        printf "    mask=0x3f,\n" >> version.txt
+        printf "    flags=0x0,\n" >> version.txt
+        printf "    OS=0x40004,\n" >> version.txt
+        printf "    fileType=0x1,\n" >> version.txt
+        printf "    subtype=0x0,\n" >> version.txt
+        printf "    date=(0, 0)\n" >> version.txt
+        printf "  ),\n" >> version.txt
+        printf "  kids=[\n" >> version.txt
+        printf "    StringFileInfo([StringTable(u'040904B0', [StringStruct(u'CompanyName', u'Dobbelen Project'), StringStruct(u'FileDescription', u'Dobbelsteen Simulatie'), StringStruct(u'FileVersion', u'%s'), StringStruct(u'InternalName', u'dobbelsteen_simulatie'), StringStruct(u'LegalCopyright', u'Copyright © Michel'), StringStruct(u'OriginalFilename', u'dobbelsteen_simulatie.exe'), StringStruct(u'ProductName', u'Dobbelsteen Simulatie'), StringStruct(u'ProductVersion', u'%s')])]),\n" "$VERSION_STRING" "$VERSION_STRING" >> version.txt
+        printf "    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])\n" >> version.txt
+        printf "  ]\n" >> version.txt
+        printf ")\n" >> version.txt
+
+      shell: bash
+
+    - name: Build with PyInstaller
+      run: |
+        set -ex # Exit on error, print commands
+
+        # Start met de basis-argumenten
+        PYINSTALLER_ARGS="--onefile"
+
+        # Bepaal of het een console of windowed app is en voeg specifieke opties toe
+        if [[ "${{ matrix.script.type }}" == "gui" ]]; then
+          # Voor GUI-apps (Tkinter, Matplotlib): verberg het consolevenster op Windows
+          # en help PyInstaller met het vinden van de Tkinter-backend voor Matplotlib.
+          PYINSTALLER_ARGS="$PYINSTALLER_ARGS --windowed --hidden-import PIL._tkinter_finder"
+        else
+          # Voor console-apps: zorg dat er een consolevenster is.
+          PYINSTALLER_ARGS="$PYINSTALLER_ARGS --console"
+        fi
+
+        # Voeg het icoon en versie-info alleen toe aan de hoofd-applicatie
+        if [[ "${{ matrix.script.name }}" == "dobbelsteen_simulatie" ]]; then
+          if [[ "${{ runner.os }}" == "Windows" && -f "assets/dice.ico" ]]; then
+            PYINSTALLER_ARGS="$PYINSTALLER_ARGS --icon=assets/dice.ico"
+            # Add version file only if it exists (i.e., on a tagged build)
+            if [[ -f "version.txt" ]]; then
+                PYINSTALLER_ARGS="$PYINSTALLER_ARGS --version-file version.txt"
+            fi
+          # elif [[ "${{ runner.os }}" == "macOS" && -f "assets/dice.icns" ]]; then
+          #   PYINSTALLER_ARGS="$PYINSTALLER_ARGS --icon=assets/dice.icns"
+          fi # macOS build is disabled for now
+        fi
+
+        # Voer PyInstaller uit met de samengestelde argumenten
+        pyinstaller $PYINSTALLER_ARGS ${{ matrix.script.name }}.py
+      shell: bash
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.script.name }}-${{ runner.os }}
+        path: dist/${{ matrix.script.name }}${{ runner.os == 'Windows' && '.exe' || '' }}
+
+  release:
+    # De 'release' job draait alleen als de 'build' job succesvol is voor alle OS'en
+    needs: build
+    runs-on: ubuntu-latest
+    # Draai deze job alleen wanneer een tag die met 'v' begint, wordt gepusht.
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    permissions:
+      # 'contents: write' is vereist om releases te kunnen aanmaken en assets te uploaden.
+      contents: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/ # Download all artifacts to the 'artifacts' directory
+
+    - name: Prepare release archives
+      run: |
+        set -ex # Exit on error, print commands
+
+        # Create staging directories for each OS to group the executables
+        mkdir -p staging/windows
+        mkdir -p staging/linux
+
+        # Go into artifacts and sort files into the correct staging directories
+        cd artifacts
+        for dir in *; do
+          if [[ ! -d "$dir" ]]; then continue; fi
+
+          file_path=$(find "$dir" -type f -print -quit)
+          if [[ -z "$file_path" ]]; then continue; fi
+
+          case "$dir" in
+            *-Windows)
+              script_name=${dir%-Windows}; ext=".exe"
+              mv "$file_path" "../staging/windows/${script_name}${ext}"
+              ;;
+            *-Linux)
+              script_name=${dir%-Linux}; ext=""
+              mv "$file_path" "../staging/linux/${script_name}${ext}"
+              ;;
+            *)
+              echo "Warning: Unrecognized artifact directory format: $dir"
+              continue
+              ;;
+          esac
+        done
+        cd .. # Back to workspace root
+
+        # Create the final release directory and the archives
+        mkdir release-assets
+        (cd staging/windows && zip -r "../../release-assets/dobbelen-${{ github.ref_name }}-windows.zip" .)
+        (cd staging/linux && tar -czvf "../../release-assets/dobbelen-${{ github.ref_name }}-linux.tar.gz" .)
+      shell: bash
+
+    - name: Create Release and Upload Artifacts
+      uses: softprops/action-gh-release@v2
+      with:
+        # Gebruik de tag die de workflow heeft getriggerd.
+        tag_name: ${{ github.ref_name }}
+        # De body kan worden verbeterd om de release notes van de tag te gebruiken.
+        # Voor nu gebruiken we een generieke boodschap.
+        body: |
+          Automatische release voor tag ${{ github.ref_name }}.
+          Commit: ${{ github.sha }}
+        make_latest: true # Markeer deze release als de 'latest'
+        fail_on_unmatched_files: true # Laat de job falen als er geen bestanden zijn om te uploaden
+        files: |
+          release-assets/*.zip
+          release-assets/*.tar.gz
