@@ -51,22 +51,43 @@ jobs:
   build:
     needs: test # Zorg ervoor dat de tests eerst slagen
     # Gebruik een matrix om de job op meerdere besturingssystemen te draaien
+    # We definiëren hier expliciet elke build-combinatie om ervoor te zorgen
+    # dat alle programma's op alle gewenste besturingssystemen worden gebouwd.
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest] #, macos-latest]
         include:
+          # --- Windows Builds ---
           - name: tekstdb_gui
             type: gui
             os: windows-latest
+          - name: tekstdb_bewerk
+            type: console
+            os: windows-latest
+          - name: tekstdb_tester
+            type: console
+            os: windows-latest
+          - name: maak_test_db
+            type: console
+            os: windows-latest
+          - name: rapport
+            type: console
+            os: windows-latest
+          # --- Linux Builds ---
           - name: tekstdb_gui
             type: gui
             os: ubuntu-latest
           - name: tekstdb_bewerk
             type: console
+            os: ubuntu-latest
+          - name: tekstdb_tester
+            type: console
+            os: ubuntu-latest
           - name: maak_test_db
             type: console
+            os: ubuntu-latest
           - name: rapport
             type: console
+            os: ubuntu-latest
 
     runs-on: ${{ matrix.os }}
 
@@ -78,6 +99,16 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.12' # Gebruik dezelfde Python-versie als lokaal.
+
+    - name: Install dependencies
+      # Cache pip packages to speed up subsequent runs. The cache is invalidated
+      # whenever requirements.txt changes.
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
     - name: Install dependencies
       run: |
